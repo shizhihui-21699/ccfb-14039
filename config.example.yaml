@@ -1,0 +1,102 @@
+# hijackwatch policy
+#
+# This file describes the organisation's own address space and the knobs that
+# turn evidence into alerts.  All values shown are defaults; delete a line to
+# keep the default.  See internal/policy for the exact semantics.
+#
+# NOTE: the example AS numbers here are fictional.
+
+org_name: example-net
+
+# ---------------------------------------------------------------------------
+# Our prefixes.  This is the only place the detector knows what is "ours".
+# ---------------------------------------------------------------------------
+prefixes:
+  - cidr: 203.0.113.0/24
+    # Origins that may legitimately announce this exact prefix.
+    expected_origins: [133900]
+    # Upstream ASNs allowed to announce more-specifics for DDoS scrubbing.
+    # A more-specific from one of these is downgraded unless other hard
+    # evidence also fires.
+    approved_cleanings: [129900]
+
+  - cidr: 198.51.100.0/24
+    expected_origins: [133900]
+    approved_cleanings: [129900]
+
+  - cidr: 192.0.2.0/24
+    # Two origins during the migration to the second ASN.
+    expected_origins: [133900, 133901]
+
+# ---------------------------------------------------------------------------
+# Operator-approved changes.  These still raise an alert, but severity is
+# capped so on-call can triage instead of paging.  Expire them.
+# ---------------------------------------------------------------------------
+known_incidents:
+  - peer_asn: 129500
+    reason: "approved migration window for the edge block (CHG-2291)"
+    expires: 2026-03-03T12:00:00Z
+
+# ASNs recently observed in hijacks against similar networks.  Presence in a
+# path is a weak signal that adds score but never pages alone.
+suspicious_recent_asns: [204800, 64500]
+
+# ---------------------------------------------------------------------------
+# Timing.
+# ---------------------------------------------------------------------------
+# How long to wait for other collectors to corroborate an update before
+# judging it.  Larger = fewer single-collector false positives, slower.
+neighbor_rtt: 90s
+
+# Collapse repeated updates from the same collector+prefix within this window.
+dedup_window: 30s
+
+# Auto-resolve an incident after this long with no new evidence.
+resolution_window: 10m
+
+# Per-prefix+origin suppression so the same incident does not re-page.
+suppression_window: 30m
+
+# How long an approved scrubbing more-specific keeps its downgrade.
+cleanup_cooldown: 4h
+
+# How much observed path history the baseline keeps for change detection.
+path_history_window: 24h
+
+# Distinct observation points required to corroborate.
+min_collectors: 2
+
+# Reject AS paths longer than this (almost certainly forged or a typo).
+max_plausible_as_path_len: 16
+
+# Lowest severity that creates an alert at all (info|low|medium|high|critical).
+min_severity: medium
+
+# Collectors whose feeds are known-bad (maintenance, peering issues).
+ignore_collectors: []
+
+# ---------------------------------------------------------------------------
+# Scoring.  Severity thresholds are cumulative-score cutoffs; evidence weights
+# add up and corroboration adds a bonus.  Tune after running `hijackwatch eval`
+# against your own data.
+# ---------------------------------------------------------------------------
+weights:
+  score_critical: 100
+  score_high: 70
+  score_medium: 45
+  score_low: 20
+
+  weight_wrong_origin: 60        # announcement's origin is not expected (hard)
+  weight_exact_origin: 15        # origin is expected (informational)
+  weight_more_specific: 35       # unexpected more-specific
+  weight_cleanup_unapproved: 25
+  weight_suspicious_asn: 20      # private/reserved/known-bad ASN in path
+  weight_new_upstream_asn: 10    # base weight for a new upstream
+  weight_absurd_path: 30         # impossible path structure (hard)
+  weight_prepended_loop: 35
+  weight_cross_collector: 15     # seen at 3+ observation points
+  weight_multi_collector: 15     # seen at min_collectors+ points
+  weight_peer_allowed: 25
+  weight_approved_cleanup: 40    # approved scrubbing more-specific (mitigation)
+  weight_known_incident: 30      # matches a known_incidents entry (mitigation)
+  weight_observed_upstream: 8

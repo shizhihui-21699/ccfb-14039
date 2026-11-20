@@ -1,0 +1,4 @@
+# The generated dataset is large (several MB) and fully reproducible from the
+# seed.  Regenerate it with:
+#   go run ./cmd/hijackwatch sim -out testdata/dataset.json
+/dataset.json
