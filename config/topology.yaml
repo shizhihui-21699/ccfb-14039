@@ -1,0 +1,216 @@
+# RouteWatch configuration.
+#
+# Addresses are RFC 5737 documentation ranges (192.0.2.0/24, 198.51.100.0/24,
+# 203.0.113.0/24) and ASNs are invented, except for well-known transit ASNs,
+# which are used as themselves so that simulated paths look like real ones.
+# Nothing here points at production infrastructure.
+
+registry:
+  self_asn: AS400001
+  org_name: ExampleNet
+  max_plausible_path_len: 7
+
+  monitored_prefixes:
+    - 198.51.100.0/23   # primary: edge + customer aggregate
+    - 203.0.113.0/24    # anycast service
+    - 192.0.2.0/24      # legacy block, no ROA (worst case for detection)
+
+  # ---------------------------------------------------------------------
+  # AS topology. `upstreams`/`downstreams`/`peer_with` are the relationships
+  # the detector uses to judge whether a path is possible. They come from IRR
+  # data plus our own network inventory; they are deliberately incomplete, and
+  # the detector must treat "no data" differently from "known to be wrong".
+  # `no_transit` marks stub networks, which can never legitimately appear
+  # mid-path.
+  # ---------------------------------------------------------------------
+  asns:
+    - asn: AS400001
+      name: ExampleNet
+      role: self
+      upstreams: [AS3356, AS1299, AS6939]
+      downstreams: [AS400010]
+
+    # Anycast sibling: a second PoP ASN that originates the same service
+    # prefix by design. Registered here so a second origin is not read as a
+    # hijack -- but only for the prefix listed.
+    - asn: AS400002
+      name: ExampleNet-APAC-Anycast
+      role: anycast
+      upstreams: [AS1299, AS3356]
+      authorized_for: [203.0.113.0/24]
+
+    # Customer CDN edge allowed to announce a specific /24 of ours (IRR route
+    # object exists; see authorizations below).
+    - asn: AS400010
+      name: CustomerX-CDN
+      role: downstream
+      upstreams: [AS400001]
+      no_transit: true
+      authorized_for: [198.51.101.0/24]
+
+    # Hosting provider that announces our anycast /24 for us.
+    - asn: AS400020
+      name: HostCo
+      role: hosting
+      upstreams: [AS1299]
+      authorized_for: [203.0.113.0/24]
+
+    # Scrubbing center we have a contract with.
+    - asn: AS400999
+      name: CleanPipe-DDoS
+      role: scrubber
+      upstreams: [AS1299, AS3356]
+
+    # A small hosting provider. Present in public tables, not authorized for
+    # anything of ours. This is what a real hijacker looks like.
+    - asn: AS400666
+      name: QuickHost-LLC
+      role: hosting
+      upstreams: [AS1299, AS174]
+
+    # A tiny single-homed business. Never transits; if it appears mid-path the
+    # path was fabricated.
+    - asn: AS400777
+      name: SmallBizNet
+      role: unknown
+      upstreams: [AS174]
+      no_transit: true
+
+    # --- transit carriers -------------------------------------------------
+    - asn: AS174
+      name: Cogent
+      role: upstream
+      peer_with: [AS1299, AS6939, AS2914]
+      downstreams: [AS3356, AS400666, AS400777]
+    - asn: AS3356
+      name: Lumen
+      role: upstream
+      upstreams: [AS174]
+      peer_with: [AS1299, AS7018]
+      downstreams: [AS7018, AS12956, AS6939, AS400001, AS400020]
+    - asn: AS1299
+      name: Arelion
+      role: upstream
+      upstreams: [AS174]
+      peer_with: [AS3356, AS6939]
+      downstreams: [AS400001, AS12956, AS3491, AS4837, AS400999, AS400666, AS400002]
+    - asn: AS6939
+      name: Hurricane-Electric
+      role: upstream
+      upstreams: [AS3356]
+      peer_with: [AS1299, AS174]
+      downstreams: [AS400001, AS4637, AS2516, AS3491, AS4134]
+    - asn: AS7018
+      name: AT&T
+      role: upstream
+      upstreams: [AS3356]
+    - asn: AS2914
+      name: NTT
+      role: upstream
+      peer_with: [AS174]
+    - asn: AS12956
+      name: Telefonica
+      role: upstream
+      upstreams: [AS3356, AS1299]
+    - asn: AS3491
+      name: PCCW
+      role: upstream
+      upstreams: [AS1299, AS6939]
+    - asn: AS4637
+      name: Telstra
+      role: upstream
+      upstreams: [AS6939]
+    - asn: AS2516
+      name: KDDI
+      role: upstream
+      upstreams: [AS6939]
+    - asn: AS4134
+      name: China-Telecom
+      role: upstream
+      upstreams: [AS6939]
+    - asn: AS4837
+      name: China-Unicom
+      role: upstream
+      upstreams: [AS1299]
+    # Level3 (now Lumen) legacy ASN. A real, transit-capable carrier that is
+    # not one of our upstreams: a forged path through it looks legitimate.
+    - asn: AS209
+      name: Lumen-Legacy
+      role: upstream
+      upstreams: [AS174]
+      downstreams: [AS7018]
+
+  # ---------------------------------------------------------------------
+  # Collectors. Region lets the engine tell a locally scoped anomaly from a
+  # coordinated global one; the ASN is the collector's own network.
+  # ---------------------------------------------------------------------
+  vantage_points:
+    - {name: vp-ashburn,     region: us-east,    asn: AS3356}
+    - {name: vp-chicago,     region: us-central, asn: AS6939}
+    - {name: vp-dallas,      region: us-south,   asn: AS7018}
+    - {name: vp-sanjose,     region: us-west,    asn: AS3356}
+    - {name: vp-toronto,     region: ca,         asn: AS6939}
+    - {name: vp-amsterdam,   region: eu-west,    asn: AS1299}
+    - {name: vp-frankfurt,   region: eu-central, asn: AS12956}
+    - {name: vp-stockholm,   region: eu-north,   asn: AS6939}
+    - {name: vp-madrid,      region: eu-south,   asn: AS3491}
+    - {name: vp-singapore,   region: apac-sg,    asn: AS4637}
+    - {name: vp-tokyo,       region: apac-jp,    asn: AS2516}
+    - {name: vp-hongkong,    region: apac-hk,    asn: AS3491}
+    - {name: vp-mumbai,      region: apac-in,    asn: AS4134}
+    - {name: vp-seoul,       region: apac-kr,    asn: AS4837}
+    - {name: vp-saopaulo,    region: latam,      asn: AS12956}
+    - {name: vp-johannesburg, region: africa,    asn: AS3356}
+
+  # ---------------------------------------------------------------------
+  # RPKI. Only two of our three prefixes have ROAs; the legacy block has none,
+  # which is exactly the case where detection must lean on other signals.
+  # ---------------------------------------------------------------------
+  roas:
+    - {prefix: 198.51.100.0/23, max_length: 24, origin: AS400001}
+    - {prefix: 203.0.113.0/24,  max_length: 24, origin: AS400001}
+
+  # IRR route objects / customer contracts. A match turns a suspicious
+  # announcement into an INFO audit entry instead of a page.
+  authorizations:
+    - prefix: 198.51.101.0/24
+      origin: AS400010
+      max_length: 24
+      reason: "CustomerX CDN edge, IRR route object CX-CDN"
+    - prefix: 203.0.113.0/24
+      origin: AS400020
+      max_length: 24
+      reason: "HostCo announces our anycast /24, contract HC-2024"
+
+  # Standing agreement with our scrubbing center. It becomes an INFO event
+  # only while the announcement carries the agreed cleaning community: a
+  # scrubber ASN appearing *without* it is not a scrubbing session.
+  scrub_agreements:
+    - prefix: 198.51.100.0/23
+      scrubber: AS400999
+      communities: ["64500:666"]
+
+  # Prefixes where more than one origin is by design. Limited to the listed
+  # origins; a second origin that is not listed is still a hijack.
+  anycast:
+    - prefix: 203.0.113.0/24
+      origins: [AS400001, AS400002]
+
+detector:
+  eval_interval: 30s
+  snapshot_interval: 5m
+  warmup: 30m
+  min_vps: 2
+  min_windows: 2
+  single_vp_min_age: 45m
+  warning_score: 45
+  critical_score: 80
+  resolve_after: 10m
+  blind_ratio: 0.5
+  stale_vp_factor: 2.5
+  delay_warn: 20s
+  flap_count: 6
+  flap_window: 10m
+  global_coverage: 0.75
+  regional_coverage: 0.5
+  max_path_samples: 5

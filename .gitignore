@@ -16,3 +16,10 @@ node_modules/
 __pycache__/
 .venv/
 venv/
+
+# RouteWatch build/runtime output
+/routewatch
+/scenario.json
+/result.json
+*.out
+bin/
